@@ -36,17 +36,17 @@ def generate_answer(vectorstore, temperature, k, template, question):
     from langchain.chat_models import ChatOpenAI
     from langchain.prompts import PromptTemplate
     from langchain.chains import RetrievalQA
+    from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 
     QA_CHAIN_PROMPT = PromptTemplate.from_template(template)
 
-    llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=temperature)
+    llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=temperature, streaming=True, callbacks=[StreamingStdOutCallbackHandler()])
     qa_chain = RetrievalQA.from_chain_type(
         llm,
         retriever=vectorstore.as_retriever(search_kwargs={"k": k}),
         chain_type_kwargs={"prompt": QA_CHAIN_PROMPT}
     )
-    result = qa_chain({"query": question})
-    return result["result"]
+    return qa_chain.run(question)
 
 
 file = load_file("kb.pdf")
@@ -78,9 +78,12 @@ if prompt := st.chat_input("Was möchtest du Fragen?"):
     st.session_state.messages.append({"role": "user", "content": prompt})
 
     with st.chat_message("assistant"):
-        message_placeholder = st.text("...")
-        full_response = generate_answer(
-            vectorstore=vectorstore, temperature=0.2, k=3, template=template, question=prompt)
+        message_placeholder = st.empty()
+        full_response = ""
+        for response in generate_answer(
+            vectorstore=vectorstore, temperature=0.2, k=3, template=template, question=prompt):
+            full_response += response
+            message_placeholder.markdown(full_response + "▌")
         message_placeholder.markdown(full_response)
-    st.session_state.messages.append(
-        {"role": "assistant", "content": full_response})
+    st.session_state.messages.append({"role": "assistant", "content": full_response})
+
